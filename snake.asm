@@ -21,11 +21,10 @@ bottom equ top+row
     gameover db 0
     quit db 0   
     delaytime db 5
-
+    score dw 0           ; <— FIXED: score is 16-bit word now
 
 .stack
-    dw   128  dup(0)
-
+    dw 128 dup(0)
 
 .code
 
@@ -91,14 +90,15 @@ quitpressed_mainloop:
     jmp quit_mainloop    
 
 quit_mainloop:
-;first clear screen
 mov ax, 0003H
 int 10h    
 mov ax, 4c00h
 int 21h  
 
+;---------------------------------
+; delay PROC
+;---------------------------------
 delay proc 
-    
     mov ah, 00
     int 1Ah
     mov bx, dx
@@ -106,18 +106,18 @@ delay proc
 jmp_delay:
     int 1Ah
     sub dx, bx
-
     cmp dl, delaytime                                                      
     jl jmp_delay    
     ret
-    
 delay endp
    
+;---------------------------------
+; fruitgeneration PROC
+;---------------------------------
 fruitgeneration proc
     mov ch, fruity
     mov cl, fruitx
 regenerate:
-    
     cmp fruitactive, 1
     je ret_fruitactive
     mov ah, 00
@@ -147,6 +147,7 @@ regenerate:
     cmp fruity, ch
     jne nevermind
     jmp regenerate             
+
 nevermind:
     mov al, fruitx
     ror al,1
@@ -173,13 +174,19 @@ ret_fruitactive:
     ret
 fruitgeneration endp
 
+;---------------------------------
+; dispdigit PROC
+;---------------------------------
 dispdigit proc
     add dl, '0'
     mov ah, 02H
     int 21H
     ret
 dispdigit endp   
-   
+
+;---------------------------------
+; dispnum PROC
+;---------------------------------
 dispnum proc    
     test ax,ax
     jz retz
@@ -198,6 +205,9 @@ retz:
     ret    
 dispnum endp   
 
+;---------------------------------
+; setcursorpos PROC
+;---------------------------------
 setcursorpos proc
     mov ah, 02H
     push bx
@@ -207,17 +217,17 @@ setcursorpos proc
     ret
 setcursorpos endp
 
+;---------------------------------
+; draw PROC
+;---------------------------------
 draw proc
     lea bx, scoremsg
     mov dx, 0109
     call writestringat
     
-    
     add dx, 7
     call setcursorpos
-    mov al, segmentcount
-    dec al
-    xor ah, ah
+    mov ax, score       ; <— FIXED: use 16-bit score
     call dispnum
         
     lea si, head
@@ -236,11 +246,12 @@ out_draw:
     mov dl, fruitx
     call writecharat
     mov fruitactive, 1
-    
     ret
-
 draw endp
 
+;---------------------------------
+; readchar PROC
+;---------------------------------
 readchar proc
     mov ah, 01H
     int 16H
@@ -254,8 +265,10 @@ keybdpressed:
     ret
 readchar endp                    
 
+;---------------------------------
+; keyboardfunctions PROC
+;---------------------------------
 keyboardfunctions proc
-    
     call readchar
     cmp dl, 0
     je next_14
@@ -293,9 +306,11 @@ next_14:
 quit_keyboardfunctions:   
     inc quit
     ret
-    
 keyboardfunctions endp
                     
+;---------------------------------
+; shiftsnake PROC
+;---------------------------------
 shiftsnake proc     
     mov bx, offset head
     
@@ -321,11 +336,8 @@ l:
     jmp l
     
 outside:    
-    
     pop ax
-    
     push dx
-    
     lea bx, head
     inc bx
     mov dx, [bx]
@@ -341,21 +353,17 @@ next_1:
     inc dl 
     inc dl
     jmp done_checking_the_head
-    
 next_2:
     cmp al, '^'
     jne next_3 
     dec dh               
-    
     jmp done_checking_the_head
-    
 next_3:
     inc dh
     
 done_checking_the_head:    
     mov [bx],dx
     call readcharat 
-    
     cmp bl, 'X'
     je i_ate_fruit
     
@@ -375,21 +383,24 @@ done_checking_the_head:
     je game_over
     cmp dl, right
     je game_over
-    
     ret
+
+;---------------------------------
+; game_over
+;---------------------------------
 game_over:
     inc gameover
     ret
-i_ate_fruit:    
 
+;---------------------------------
+; i_ate_fruit (with score + speed logic)
+;---------------------------------
+i_ate_fruit:    
     mov al, segmentcount
     xor ah, ah
-    
-    
     lea bx, body
     mov cx, 3
     mul cx
-    
     pop dx
     add bx, ax
     mov byte ptr ds:[bx], '*'
@@ -400,9 +411,27 @@ i_ate_fruit:
     mov bl, 0
     call writecharat
     mov fruitactive, 0   
-    ret 
+
+    ;---------------------------
+    ; FIXED SCORE + SPEED SYSTEM
+    ;---------------------------
+    inc word ptr score
+
+    mov ax, score
+    mov bl, 3
+    div bl           ; AX / 3
+    cmp ah, 0
+    jne no_speedup
+    cmp delaytime, 1
+    jbe no_speedup
+    dec delaytime
+no_speedup:
+    ret
 shiftsnake endp
    
+;---------------------------------
+; printbox PROC
+;---------------------------------
 printbox proc
     mov dh, top
     mov dl, left
@@ -430,12 +459,13 @@ l4:
     call writecharat    
     dec dh 
     loop l4    
-    
     ret
 printbox endp
               
+;---------------------------------
+; writecharat PROC
+;---------------------------------
 writecharat proc
-    ;80x25
     push dx
     mov ax, dx
     and ax, 0FF00H
@@ -447,7 +477,6 @@ writecharat proc
     shr ax,1
     shr ax,1
     shr ax,1
-    
     
     push bx
     mov bh, 160
@@ -461,7 +490,10 @@ writecharat proc
     pop dx
     ret    
 writecharat endp
-            
+         
+;---------------------------------
+; readcharat PROC
+;---------------------------------
 readcharat proc
     push dx
     mov ax, dx
@@ -487,6 +519,9 @@ readcharat proc
     ret
 readcharat endp        
 
+;---------------------------------
+; writestringat PROC
+;---------------------------------
 writestringat proc
     push dx
     mov ax, dx
@@ -503,14 +538,12 @@ writestringat proc
     push bx
     mov bh, 160
     mul bh
-    
     pop bx
     and dx, 0FFH
     shl dx,1
     add ax, dx
     mov di, ax
 loop_writestringat:
-    
     mov al, [bx]
     test al, al
     jz exit_writestringat
@@ -520,12 +553,10 @@ loop_writestringat:
     inc bx
     jmp loop_writestringat
     
-    
 exit_writestringat:
     pop dx
     ret
 writestringat endp
      
 main endp
-          
 end main
