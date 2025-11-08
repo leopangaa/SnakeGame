@@ -1,3 +1,5 @@
+ADDING SAMPLE FEATURES FOR guifelippe's SNAKE GAME
+
 # Snake Game in Assembly
 
 Welcome to the **Snake Game** in Assembly repository! This project is a classic Snake game implemented in Assembly x86 language, designed to be both a fun retro gaming experience and an educational resource for those interested in low-level programming.
